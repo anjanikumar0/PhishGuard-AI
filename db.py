@@ -1,66 +1,48 @@
-import sqlite3
-import pandas as pd
-
+﻿import sqlite3
 DB_NAME = "phishing_scans.db"
 
 def get_connection():
     conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
-    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS scan_history (
             scan_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            raw_url TEXT NOT NULL,
-            normalized_url TEXT NOT NULL,
-            registrable_domain TEXT,
-            prediction_label TEXT NOT NULL CHECK (prediction_label IN ('Legitimate', 'Suspicious')),
-            phishing_probability REAL NOT NULL,
-            model_version TEXT NOT NULL DEFAULT 'rf_v1.0',
+            raw_url TEXT NOT NULL, normalized_url TEXT NOT NULL,
+            registrable_domain TEXT, prediction_label TEXT NOT NULL,
+            detection_source TEXT NOT NULL, phishing_probability REAL NOT NULL,
             scanned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
     """)
-
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS scan_features (
             feature_id INTEGER PRIMARY KEY AUTOINCREMENT,
             scan_id INTEGER NOT NULL UNIQUE,
-            url_length INTEGER NOT NULL,
-            hostname_length INTEGER NOT NULL,
-            path_length INTEGER NOT NULL,
-            subdomain_depth INTEGER NOT NULL,
-            has_ip_address INTEGER NOT NULL,
-            has_at_symbol INTEGER NOT NULL,
-            hyphen_count_domain INTEGER NOT NULL,
-            dot_count INTEGER NOT NULL,
-            special_char_count INTEGER NOT NULL,
-            digit_ratio_domain REAL NOT NULL,
-            url_entropy REAL NOT NULL,
-            has_redirect_slash INTEGER NOT NULL,
-            is_shortened_url INTEGER NOT NULL,
-            has_suspicious_tld INTEGER NOT NULL,
-            sensitive_keyword_count INTEGER NOT NULL,
+            url_length INTEGER, hostname_length INTEGER, path_length INTEGER,
+            subdomain_depth INTEGER, has_ip_address INTEGER, has_at_symbol INTEGER,
+            hyphen_count_domain INTEGER, dot_count INTEGER, special_char_count INTEGER,
+            digit_ratio_domain REAL, url_entropy REAL, has_redirect_slash INTEGER,
+            is_shortened_url INTEGER, has_suspicious_tld INTEGER, sensitive_keyword_count INTEGER,
             FOREIGN KEY (scan_id) REFERENCES scan_history (scan_id) ON DELETE CASCADE
         );
     """)
     conn.commit()
     conn.close()
 
-def save_scan(raw_url: str, norm_url: str, domain: str, label: str, prob: float, features: dict):
+def save_scan(raw_url: str, norm_url: str, domain: str, label: str, source: str, prob: float, features: dict):
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            INSERT INTO scan_history (raw_url, normalized_url, registrable_domain, prediction_label, phishing_probability)
-            VALUES (?, ?, ?, ?, ?)
-        """, (raw_url, norm_url, domain, label, round(prob, 4)))
-        
+            INSERT INTO scan_history (raw_url, normalized_url, registrable_domain, prediction_label, detection_source, phishing_probability)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (raw_url, norm_url, domain, label, source, round(prob, 4)))
         scan_id = cursor.lastrowid
-        
         cursor.execute("""
             INSERT INTO scan_features (
                 scan_id, url_length, hostname_length, path_length, subdomain_depth,
@@ -79,19 +61,15 @@ def save_scan(raw_url: str, norm_url: str, domain: str, label: str, prob: float,
     finally:
         conn.close()
 
-def fetch_history(limit: int = 25) -> pd.DataFrame:
+def fetch_history(limit: int = 20) -> list[dict]:
     conn = get_connection()
-    query = """
-        SELECT scan_id AS ID, raw_url AS URL, registrable_domain AS Domain,
-               prediction_label AS Status, ROUND(phishing_probability * 100, 1) AS "Risk (%)",
-               scanned_at AS Timestamp
-        FROM scan_history
-        ORDER BY scanned_at DESC
-        LIMIT ?
-    """
-    df = pd.read_sql_query(query, conn, params=(limit,))
+    rows = conn.execute("""
+        SELECT scan_id, raw_url, registrable_domain, prediction_label, detection_source,
+               ROUND(phishing_probability * 100, 1) AS risk_percent, scanned_at
+        FROM scan_history ORDER BY scanned_at DESC LIMIT ?
+    """, (limit,)).fetchall()
     conn.close()
-    return df
+    return [dict(r) for r in rows]
 
 def clear_history():
     conn = get_connection()
