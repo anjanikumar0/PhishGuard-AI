@@ -36,7 +36,7 @@ def get_live_threat_feed():
 async def home(request: Request):
     history = fetch_history(limit=20)
     live_urls, _ = get_live_threat_feed()
-    return templates.TemplateResponse("index.html", {"request": request, "result": None, "history": history, "feed_count": len(live_urls)})
+    return templates.TemplateResponse(request=request, name="index.html", context={"result": None, "history": history, "feed_count": len(live_urls)})
 
 @app.post("/scan", response_class=HTMLResponse)
 async def scan_url(request: Request, url: str = Form(...)):
@@ -57,7 +57,7 @@ async def scan_url(request: Request, url: str = Form(...)):
 
     save_scan(url.strip(), norm_url, reg_domain, label, source, final_prob, features)
     result_data = {"raw_url": url.strip(), "domain": reg_domain, "label": label, "source": source, "risk_percent": round(final_prob * 100, 1), "features": features}
-    return templates.TemplateResponse("index.html", {"request": request, "result": result_data, "history": fetch_history(limit=20), "feed_count": len(live_urls)})
+    return templates.TemplateResponse(request=request, name="index.html", context={"result": result_data, "history": fetch_history(limit=20), "feed_count": len(live_urls)})
 
 @app.post("/clear")
 async def reset_history():
