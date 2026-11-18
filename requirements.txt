@@ -2,8 +2,8 @@
 uvicorn
 jinja2
 python-multipart
-requests
 pandas
 scikit-learn
-tldextract
 joblib
+requests
+tldextract
